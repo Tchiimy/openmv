@@ -70,7 +70,7 @@ int main(void) {
         // Poll TinyUSB.
         tud_task();
         // Wait for the device to be connected and configured.
-        if (tud_mounted() || check_timeout_ms(start_ms, 1000)) {
+        if (tud_mounted() || check_timeout_ms(start_ms, 100)) {
             break;
         }
         port_led_blink(DFU_LED_BLINK_FAST);
