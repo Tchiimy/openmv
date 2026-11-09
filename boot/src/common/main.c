@@ -53,34 +53,75 @@ const omv_boot_header_t omv_boot_header = {
 
 int main(void) {
     // Initialize low-level sub-systems.
+    // NOTE: in OMV_BOOT_SKIP_USB builds, this does NOT enable USB.
     port_init();
 
-    // Initialize TinyUSB.
-    tud_init(TUD_OPT_RHPORT);
-
+    // Read magic BEFORE any USB activity.
     bool forced = false;
     #ifdef OMV_BOOT_MAGIC_ADDR
     forced = OMV_BOOT_MAGIC_VALUE == *((uint32_t *) OMV_BOOT_MAGIC_ADDR);
     *((uint32_t *) OMV_BOOT_MAGIC_ADDR) = 0;
     #endif
 
+    #ifdef OMV_BOOT_SKIP_USB
+    // Fast path: skip USB unless the magic was set explicitly.
+    if (forced) {
+        port_usb_init();
+        tud_init(TUD_OPT_RHPORT);
+
+        // Wait for enumeration. Give the host 1s since the user
+        // explicitly requested DFU (IDE "Run" or pyb.dfu()).
+        uint32_t start_ms = port_ticks_ms();
+        while (true) {
+            tud_task();
+            if (tud_mounted() || check_timeout_ms(start_ms, 1000)) {
+                break;
+            }
+            port_led_blink(DFU_LED_BLINK_FAST);
+        }
+
+        // Wait for DFU commands until the host disconnects or detaches.
+        start_ms = port_ticks_ms();
+        while (tud_mounted()) {
+            tud_task();
+
+            switch (dfu_state) {
+                case DFU_STATE_RESET:
+                    break;
+                case DFU_STATE_ATTACHED:
+                    port_led_blink(DFU_LED_BLINK_SLOW);
+                    continue;
+                case DFU_STATE_DETACHED:
+                    if (check_timeout_ms(start_ms, OMV_BOOT_DFU_TIMEOUT)) {
+                        break;
+                    }
+                    port_led_blink(DFU_LED_BLINK_FAST);
+                    continue;
+            }
+            break;
+        }
+
+        tud_disconnect();
+        tud_deinit(TUD_OPT_RHPORT);
+        port_usb_deinit();
+    }
+    #else
+    // Standard path: USB is already enabled in port_init().
+    tud_init(TUD_OPT_RHPORT);
+
     uint32_t start_ms = port_ticks_ms();
 
     while (true) {
-        // Poll TinyUSB.
         tud_task();
-        // Wait for the device to be connected and configured.
         if (tud_mounted() || check_timeout_ms(start_ms, 100)) {
             break;
         }
         port_led_blink(DFU_LED_BLINK_FAST);
     }
 
-    // Restart timeout.
     start_ms = port_ticks_ms();
 
     while (tud_mounted()) {
-        // Poll TinyUSB.
         tud_task();
 
         switch (dfu_state) {
@@ -99,11 +140,9 @@ int main(void) {
         break;
     }
 
-    // Disconnect USB device.
     tud_disconnect();
-
-    // Deinitialize TinyUSB.
     tud_deinit(TUD_OPT_RHPORT);
+    #endif
 
     // Deinitialize low-level sub-systems.
     port_deinit();

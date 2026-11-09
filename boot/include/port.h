@@ -98,4 +98,6 @@ void port_mpu_init(void);
 void port_mpu_deinit(void);
 void port_mpu_load_defaults();
 void port_mpu_config(const partition_t *p, bool ro, bool np, bool xn);
+int port_usb_init(void);
+int port_usb_deinit(void);
 #endif  // __OMV_BOOT_PORT_H__

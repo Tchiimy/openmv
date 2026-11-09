@@ -54,6 +54,32 @@ void USB2_IRQ_Handler(void) {
     tud_int_handler(1);
 }
 
+int port_usb_init(void) {
+    // Enable USB clocks.
+    USB_OTG_CLK_ENABLE();
+    USB_OTG_PHY_CLK_ENABLE(0x2U);
+
+    // Enable USB core.
+    USB_OTG_ENABLE();
+
+    // Configure and enable USB IRQ.
+    HAL_NVIC_SetPriority(OMV_USB_IRQN, 6, 0);
+    NVIC_ClearPendingIRQ(OMV_USB_IRQN);
+    HAL_NVIC_EnableIRQ(OMV_USB_IRQN);
+    return 0;
+}
+
+int port_usb_deinit(void) {
+    // Disable USB IRQ.
+    HAL_NVIC_DisableIRQ(OMV_USB_IRQN);
+    NVIC_ClearPendingIRQ(OMV_USB_IRQN);
+
+    // Disable USB clocks.
+    USB_OTG_CLK_DISABLE();
+    USB_OTG_PHY_CLK_DISABLE();
+    return 0;
+}
+
 int port_init(void) {
     #ifdef __DCACHE_PRESENT
     // Clean I-Cache if enabled.
@@ -97,28 +123,19 @@ int port_init(void) {
     // Turn off LED.
     port_pin_write(OMV_BOOT_LED_PIN, true);
 
-    // Enable USB clocks.
-    USB_OTG_CLK_ENABLE();
-    USB_OTG_PHY_CLK_ENABLE(0x2U);
+    #ifndef OMV_BOOT_SKIP_USB
+    // Standard path: enable USB during port_init (as before).
+    port_usb_init();
+    #endif
 
-    // Enable USB core.
-    USB_OTG_ENABLE();
-
-    // Configure and enable USB IRQ.
-    HAL_NVIC_SetPriority(OMV_USB_IRQN, 6, 0);
-    NVIC_ClearPendingIRQ(OMV_USB_IRQN);
-    HAL_NVIC_EnableIRQ(OMV_USB_IRQN);
     return 0;
 }
 
 int port_deinit(void) {
-    // Disable USB IRQ.
-    HAL_NVIC_DisableIRQ(OMV_USB_IRQN);
-    NVIC_ClearPendingIRQ(OMV_USB_IRQN);
-
-    // Disable USB clocks.
-    USB_OTG_CLK_DISABLE();
-    USB_OTG_PHY_CLK_DISABLE();
+    #ifndef OMV_BOOT_SKIP_USB
+    // Standard path: disable USB during port_deinit (as before).
+    port_usb_deinit();
+    #endif
 
     #ifdef __DCACHE_PRESENT
     // Disable I-Cache if enabled.
